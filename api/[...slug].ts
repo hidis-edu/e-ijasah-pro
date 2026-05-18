@@ -377,7 +377,7 @@ router.post('/proxy', async (req, res) => {
         'Content-Type': 'application/json',
         ...headers
       },
-      body: body ? JSON.stringify(body) : undefined
+      body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined
     });
     const data = await response.json();
     res.status(response.status).json(data);

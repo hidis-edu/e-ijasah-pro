@@ -307,6 +307,10 @@ async function startServer() {
   });
 
   // 8. Prestasi Siswa
+  app.get("/api/ijasah/prestasi", (req, res) => {
+    res.json({ status: 'sukses', data: prestasiSiswa });
+  });
+
   app.get("/api/ijasah/prestasi/:siswa_id", (req, res) => {
     const { siswa_id } = req.params;
     const filtered = prestasiSiswa.filter(p => p.siswa_id === siswa_id);
