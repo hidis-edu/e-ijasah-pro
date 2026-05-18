@@ -1,0 +1,6 @@
+{
+  "name": "E-Ijazah Pro",
+  "description": "Sistem Manajemen Kelulusan dan Penerbitan E-Ijazah Digital Terintegrasi untuk SD, SMP, dan SMA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
