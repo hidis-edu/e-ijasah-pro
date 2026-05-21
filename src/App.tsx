@@ -68,9 +68,7 @@ const ApiSettingsModal = ({
   baseUrl: string; 
   setBaseUrl: (url: string) => void;
 }) => {
-  const [tempUrl, setTempUrl] = useState(baseUrl || 'http://localhost:3000');
-  const [isChecking, setIsChecking] = useState(false);
-  const [checkError, setCheckError] = useState<string | null>(null);
+  const [tempUrl, setTempUrl] = useState(baseUrl);
 
   if (!isOpen) return null;
 
@@ -92,7 +90,7 @@ const ApiSettingsModal = ({
             <XCircle className="w-6 h-6" />
           </button>
         </div>
-          <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4">
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Base URL API</label>
             <input 
@@ -102,69 +100,19 @@ const ApiSettingsModal = ({
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500/20"
               placeholder="https://example.com"
             />
-            <p className="text-[10px] text-slate-400 font-medium">Endpoint default: {tempUrl}/api/jbsuser/login — kosongkan untuk gunakan endpoint relatif</p>
+            <p className="text-[10px] text-slate-400 font-medium">Endpoint default: {tempUrl}/api/jbsuser/login</p>
           </div>
-          {checkError && (
-            <p className="text-sm text-red-600">{checkError}</p>
-          )}
           <button 
-            onClick={async () => {
-              setIsChecking(true);
-              setCheckError(null);
-              const trimmed = (tempUrl || '').trim();
-              if (!trimmed) {
-                setBaseUrl('');
-                setIsChecking(false);
-                onClose();
-                return;
-              }
-
-              // Ensure protocol
-              const url = trimmed.match(/^https?:\/\//) ? trimmed : `https://${trimmed}`;
-              const healthCandidates = [
-                `${url.replace(/\/$/, '')}/api/ijasah`,
-                url
-              ];
-
-              const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 5000);
-              let ok = false;
-              let lastErr: any = null;
-
-              for (const candidate of healthCandidates) {
-                try {
-                  const resp = await fetch(candidate, { method: 'GET', signal: controller.signal });
-                  if (resp && resp.ok) {
-                    ok = true;
-                    break;
-                  }
-                } catch (err) {
-                  lastErr = err;
-                }
-              }
-
-              clearTimeout(timeout);
-              controller.abort();
-
-              if (ok) {
-                setBaseUrl(trimmed);
-                setIsChecking(false);
-                onClose();
-              } else {
-                setIsChecking(false);
-                setCheckError('Tidak dapat menjangkau URL tersebut. Periksa koneksi atau URL (timeout 5s).');
-                console.warn('Health check failed:', lastErr);
-              }
+            onClick={() => {
+              setBaseUrl(tempUrl);
+              onClose();
             }}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
-            disabled={isChecking}
           >
-            {isChecking ? 'Menguji...' : 'Simpan Konfigurasi'}
+            Simpan Konfigurasi
           </button>
         </div>
       </motion.div>
-      
-
     </div>
   );
 };
@@ -386,39 +334,26 @@ const LoginView = ({ apiBaseUrl, onLoginSuccess }: { apiBaseUrl: string, onLogin
 
 const apiCall = async (baseUrl: string, endpoint: string, options: any = {}) => {
   const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
-  const requestBody = options?.body;
-
-  // Prepare options for local fetch
+  
+  // Prepare options for fetch/proxy
   const fetchOptions = { ...options };
   if (fetchOptions.body && typeof fetchOptions.body === 'object' && !(fetchOptions.body instanceof FormData)) {
     fetchOptions.body = JSON.stringify(fetchOptions.body);
   }
 
-  // If baseUrl is remote (e.g., https://api.example.com), prefer using local proxy to avoid CORS.
-  // If proxy is unavailable (404 or network error), fallback to direct fetch to the remote API.
+  // If baseUrl is remote (e.g., https://v7.hidis.id), use local proxy to avoid CORS
   if (baseUrl && baseUrl.startsWith('http')) {
-    try {
-      const proxyResponse = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: fullUrl,
-          method: options.method || 'GET',
-          body: requestBody,
-          headers: options.headers
-        }),
-      });
-
-      // If proxy route is not present (404) or returns unexpected status, fallback to direct fetch
-      if (!proxyResponse || proxyResponse.status === 404) {
-        return fetch(fullUrl, fetchOptions);
-      }
-
-      return proxyResponse;
-    } catch (err) {
-      // Network error contacting proxy — fallback to direct fetch
-      return fetch(fullUrl, fetchOptions);
-    }
+    const proxyResponse = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: fullUrl,
+        method: options.method || 'GET',
+        body: options.body, // The proxy handles its own stringification or expects object
+        headers: options.headers
+      }),
+    });
+    return proxyResponse;
   }
   
   // Local or relative fetch
@@ -428,13 +363,11 @@ const apiCall = async (baseUrl: string, endpoint: string, options: any = {}) => 
 const DashboardPage = ({ apiBaseUrl }: { apiBaseUrl: string }) => {
   const [activeTahun, setActiveTahun] = useState<any>(null);
   const [totalSiswa, setTotalSiswa] = useState<number>(0);
-  const [prestasiStats, setPrestasiStats] = useState({ akademik: 0, nonAkademik: 0, total: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchActiveTahun();
     fetchTotalSiswa();
-    fetchPrestasiStats();
   }, [apiBaseUrl]);
 
   const fetchActiveTahun = async () => {
@@ -464,30 +397,6 @@ const DashboardPage = ({ apiBaseUrl }: { apiBaseUrl: string }) => {
     }
   };
 
-  const fetchPrestasiStats = async () => {
-    try {
-      const response = await apiCall(apiBaseUrl, '/api/ijasah/prestasi');
-      const result = await response.json();
-      if (result.status === 'sukses' && Array.isArray(result.data)) {
-        let akademik = 0;
-        let nonAkademik = 0;
-
-        result.data.forEach((item: any) => {
-          const type = String(item.jenis_prestasi || 'Akademik').toLowerCase();
-          if (type.includes('non')) {
-            nonAkademik += 1;
-          } else {
-            akademik += 1;
-          }
-        });
-
-        setPrestasiStats({ akademik, nonAkademik, total: result.data.length });
-      }
-    } catch (error) {
-      console.error('Error fetching prestasi stats:', error);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -508,32 +417,6 @@ const DashboardPage = ({ apiBaseUrl }: { apiBaseUrl: string }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.1 }}
           key={stat.label} 
-          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-              <h3 className="text-3xl font-bold mt-1 text-slate-900">{stat.value}</h3>
-              <p className="text-xs text-slate-400 mt-2">{stat.sub}</p>
-            </div>
-            <div className={`p-2 rounded-xl bg-slate-50 ${stat.color}`}>
-              <stat.icon className="w-6 h-6" />
-            </div>
-          </div>
-        </motion.div>
-      ))}
-    </div>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {[
-        { label: 'Prestasi Akademik', value: prestasiStats.akademik.toString(), sub: 'Jumlah prestasi akademik', icon: Award, color: 'text-indigo-600' },
-        { label: 'Prestasi Non-Akademik', value: prestasiStats.nonAkademik.toString(), sub: 'Jumlah prestasi non-akademik', icon: Award, color: 'text-fuchsia-600' },
-      ].map((stat, i) => (
-        <motion.div 
-          key={stat.label}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.1 }}
           className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"
         >
           <div className="flex items-start justify-between">
@@ -596,9 +479,6 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
   const [selectedNis, setSelectedNis] = useState<string | null>(null);
   const [scores, setScores] = useState<any[]>([]);
   const [isScoresLoading, setIsScoresLoading] = useState(false);
-  const [showInputModal, setShowInputModal] = useState(false);
-  const [editingScores, setEditingScores] = useState<any[]>([]);
-  const [isSavingScores, setIsSavingScores] = useState(false);
 
   useEffect(() => {
     fetchClasses();
@@ -615,35 +495,6 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
       fetchScores(selectedNis);
     }
   }, [selectedNis, semester, apiBaseUrl]);
-
-  // Try to fetch scores from /api/ijasah first, fallback to jbsakad nilairapor
-  const fetchScores = async (nis: string) => {
-    setIsScoresLoading(true);
-    try {
-      // prefer official ijasah endpoint
-      try {
-        const resp = await apiCall(apiBaseUrl, `/api/ijasah/nilai-rapor/${nis}`);
-        const r = await resp.json();
-        if (r && r.status === 'sukses') {
-          setScores(r.data);
-          return;
-        }
-      } catch (e) {
-        // ignore and fallback
-      }
-
-      // fallback to jbsakad mock
-      const response = await apiCall(apiBaseUrl, `/api/jbsakad/nilairapor/siswa/${nis}/semester/${semester}`);
-      const result = await response.json();
-      if (result.status === "sukses") {
-        setScores(result.data);
-      }
-    } catch (error) {
-      console.error("Error fetching scores:", error);
-    } finally {
-      setIsScoresLoading(false);
-    }
-  };
 
   const fetchClasses = async () => {
     try {
@@ -681,6 +532,21 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
       console.error("Error fetching students:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchScores = async (nis: string) => {
+    setIsScoresLoading(true);
+    try {
+      const response = await apiCall(apiBaseUrl, `/api/jbsakad/nilairapor/siswa/${nis}/semester/${semester}`);
+      const result = await response.json();
+      if (result.status === "sukses") {
+        setScores(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching scores:", error);
+    } finally {
+      setIsScoresLoading(false);
     }
   };
 
@@ -777,46 +643,7 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
                     <p className="text-xs text-slate-500 font-medium">Nilai Rapor Semester {semester}</p>
                   </div>
                 </div>
-                <button disabled={!selectedNis} onClick={async () => {
-                  setShowInputModal(true);
-                  // load existing ijasah scores into editing buffer (prefer ijasah)
-                  try {
-                    const resp = await apiCall(apiBaseUrl, `/api/ijasah/nilai-rapor/${selectedNis}`);
-                    const r = await resp.json();
-                    if (r && r.status === 'sukses' && Array.isArray(r.data) && r.data.length > 0) {
-                      setEditingScores(r.data.map((it: any, idx: number) => ({
-                        mapel_id: it.mapel_id || (idx + 1),
-                        nama_mapel: it.nama_mapel || `Mapel ${idx+1}`,
-                        nilai_pengetahuan: it.nilai_pengetahuan ?? 0,
-                        nilai_keterampilan: it.nilai_keterampilan ?? 0
-                      })));
-                      return;
-                    }
-
-                    // if ijasah endpoint returned empty, try to fetch master mapel list
-                    const mapelResp = await apiCall(apiBaseUrl, '/api/ijasah/mapel');
-                    const mapelRes = await mapelResp.json();
-                    if (mapelRes && mapelRes.status === 'sukses' && Array.isArray(mapelRes.data) && mapelRes.data.length > 0) {
-                      setEditingScores(mapelRes.data.map((m: any) => ({
-                        mapel_id: m.id,
-                        nama_mapel: m.nama_mapel || m.nama || 'Unknown',
-                        nilai_pengetahuan: 0,
-                        nilai_keterampilan: 0
-                      })));
-                      return;
-                    }
-                  } catch (e) {
-                    // ignore and fallback
-                  }
-
-                  // final fallback: convert displayed scores into editable buffer
-                  setEditingScores(scores.map((s) => ({
-                    mapel_id: s.mapel_id || null,
-                    nama_mapel: s.nama_mapel || s.nama_mapel || 'Unknown',
-                    nilai_pengetahuan: s.nilai_pengetahuan ?? 0,
-                    nilai_keterampilan: s.nilai_keterampilan ?? 0
-                  })));
-                }} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all ${selectedNis ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all">
                   <Plus className="w-4 h-4" /> Input Nilai
                 </button>
               </div>
@@ -836,9 +663,7 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {scores.map((score, idx) => {
-                        const kp = Number(score.nilai_pengetahuan ?? 0);
-                        const kk = Number(score.nilai_keterampilan ?? 0);
-                        const avg = Number.isFinite(kp) && Number.isFinite(kk) ? (kp + kk) / 2 : NaN;
+                        const avg = (score.nilai_pengetahuan + score.nilai_keterampilan) / 2;
                         return (
                           <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                             <td className="px-6 py-4 text-sm font-bold text-slate-800">{score.nama_mapel}</td>
@@ -849,8 +674,8 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
                               <span className="text-sm font-mono font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">{score.nilai_keterampilan}</span>
                             </td>
                             <td className="px-6 py-4 text-center">
-                              <span className={`text-sm font-mono font-bold px-3 py-1 rounded-lg border ${(!isNaN(avg) && avg >= 80) ? 'bg-green-50 text-green-700 border-green-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                                {!isNaN(avg) ? avg.toFixed(1) : '-'}
+                              <span className={`text-sm font-mono font-bold px-3 py-1 rounded-lg border ${avg >= 80 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                {avg.toFixed(1)}
                               </span>
                             </td>
                           </tr>
@@ -864,112 +689,6 @@ const NilaiPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
           )}
         </div>
       </div>
-
-      {showInputModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <motion.div
-            initial={{ scale: 0.98, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-auto max-h-[80vh] border border-slate-200"
-          >
-            <div className="p-4 border-b flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-slate-900">Input Nilai - {activeStudent?.nama || selectedNis}</h3>
-                <p className="text-xs text-slate-500">Semester {semester} — Ubah nilai lalu simpan</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setShowInputModal(false)} className="text-slate-500 hover:text-slate-700">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 space-y-4">
-              {editingScores.length === 0 ? (
-                <div className="p-8 text-center text-slate-500">Tidak ada mata pelajaran untuk diedit.</div>
-              ) : (
-                <div className="space-y-3">
-                  {editingScores.map((es: any, idx: number) => (
-                    <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-center p-2 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="md:col-span-2">
-                        <div className="text-sm font-semibold text-slate-800">{es.nama_mapel}</div>
-                      </div>
-                      <div>
-                        <input
-                          type="number"
-                          value={es.nilai_pengetahuan}
-                          onChange={(e) => {
-                            const v = Number(e.target.value || 0);
-                            setEditingScores((prev: any[]) => {
-                              const copy = [...prev];
-                              copy[idx] = { ...copy[idx], nilai_pengetahuan: v };
-                              return copy;
-                            });
-                          }}
-                          className="w-full p-2 border border-slate-200 rounded-lg text-sm"
-                          placeholder="Pengetahuan"
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="number"
-                          value={es.nilai_keterampilan}
-                          onChange={(e) => {
-                            const v = Number(e.target.value || 0);
-                            setEditingScores((prev: any[]) => {
-                              const copy = [...prev];
-                              copy[idx] = { ...copy[idx], nilai_keterampilan: v };
-                              return copy;
-                            });
-                          }}
-                          className="w-full p-2 border border-slate-200 rounded-lg text-sm"
-                          placeholder="Keterampilan"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3">
-                <button onClick={() => setShowInputModal(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700">Batal</button>
-                <button
-                  disabled={isSavingScores}
-                  onClick={async () => {
-                    if (!selectedNis) return;
-                    setIsSavingScores(true);
-                    try {
-                      await Promise.all(editingScores.map((it: any) => apiCall(apiBaseUrl, '/api/ijasah/nilai-rapor', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: {
-                          siswa_id: selectedNis,
-                          mapel_id: it.mapel_id,
-                          semester,
-                          nilai_pengetahuan: it.nilai_pengetahuan ?? 0,
-                          nilai_keterampilan: it.nilai_keterampilan ?? 0
-                        }
-                      })));
-
-                      await fetchScores(selectedNis);
-                      setShowInputModal(false);
-                    } catch (err) {
-                      console.error('Error saving scores:', err);
-                      alert('Terjadi kesalahan saat menyimpan nilai. Periksa koneksi.');
-                    } finally {
-                      setIsSavingScores(false);
-                    }
-                  }}
-                  className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold disabled:opacity-60"
-                >
-                  {isSavingScores ? 'Menyimpan...' : 'Simpan Nilai'}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
     </div>
   );
 };
@@ -982,6 +701,8 @@ const SiswaPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
+  const [selectedDetail, setSelectedDetail] = useState<any | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   useEffect(() => {
     fetchClasses();
@@ -1121,8 +842,7 @@ const SiswaPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">NIS</th>
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">NISN</th>
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama Lengkap</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pin</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">HP Ortu</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tempat, Tanggal Lahir</th>
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Aksi</th>
                 </tr>
               </thead>
@@ -1141,16 +861,40 @@ const SiswaPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
                     <td className="px-6 py-4 text-sm font-mono text-slate-600">{s.nis}</td>
                     <td className="px-6 py-4 text-sm font-mono text-slate-500">{s.nisn || '-'}</td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">{s.nama}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 font-mono">{s.pinsiswa}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{s.hportu}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-blue-600 hover:text-blue-800 text-xs font-semibold">Ubah</button>
+                    <td className="px-6 py-4 text-sm text-slate-600">
+                      {s.tmplahir && s.tgllahir ? `${s.tmplahir}, ${s.tgllahir}` : (s.tmplahir || s.tgllahir || '-')}
+                    </td>
+                    <td className="px-6 py-4 text-right flex justify-end gap-2">
+                      <button 
+                        onClick={async () => {
+                          setIsDetailLoading(true);
+                          try {
+                            const response = await apiCall(apiBaseUrl, `/api/jbsakad/siswa/detail/${s.nis}`);
+                            const result = await response.json();
+                            if (result.status === "sukses") {
+                              setSelectedDetail(result.data);
+                            } else {
+                              alert("Gagal memuat detail siswa");
+                            }
+                          } catch (err) {
+                            console.error(err);
+                            alert("Terjadi kesalahan saat memuat detail");
+                          } finally {
+                            setIsDetailLoading(false);
+                          }
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                        disabled={isDetailLoading}
+                      >
+                        {isDetailLoading ? 'Memuat...' : 'Detail'}
+                      </button>
+                      <button className="text-slate-600 hover:text-slate-800 text-xs font-semibold">Ubah</button>
                     </td>
                   </tr>
                 ))}
                 {paginatedStudents.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">
                       Tidak ada data siswa ditemukan.
                     </td>
                   </tr>
@@ -1185,6 +929,159 @@ const SiswaPage = ({ apiBaseUrl, user }: { apiBaseUrl: string, user: User | null
           </>
         )}
       </div>
+
+      {/* Modern Student Detail Modal */}
+      {selectedDetail && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-slate-100">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-4">
+                {selectedDetail.foto ? (
+                  <img src={selectedDetail.foto} alt={selectedDetail.nama} className="w-12 h-12 rounded-full border border-slate-100 object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 text-slate-400 font-bold text-lg">
+                    {selectedDetail.nama[0]}
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-bold text-slate-900 text-lg leading-tight">{selectedDetail.nama}</h3>
+                  <p className="text-sm text-slate-500">NIS: <span className="font-mono">{selectedDetail.nis}</span> | NISN: <span className="font-mono">{selectedDetail.nisn || '-'}</span></p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedDetail(null)}
+                className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-all"
+              >
+                Tutup
+              </button>
+            </div>
+
+            {/* Content Tabs / Sections */}
+            <div className="p-6 space-y-8">
+              {/* Sekilas Data Utama */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Panggilan</span>
+                  <span className="text-sm font-semibold text-slate-700">{selectedDetail.panggilan || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">NIK</span>
+                  <span className="text-sm font-semibold text-slate-700 font-mono">{selectedDetail.nik || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Agama / Suku</span>
+                  <span className="text-sm font-semibold text-slate-700">{selectedDetail.agama || '-'} / {selectedDetail.suku || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Kelamin</span>
+                  <span className="text-sm font-semibold text-slate-700">{selectedDetail.kelamin === 'p' ? 'Perempuan' : 'Laki-laki'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* section: Pribadi */}
+                <div className="space-y-4">
+                  <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2">Informasi Pribadi & Kontak</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Tempat, Tgl Lahir</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.tmplahir || '-'}, {selectedDetail.tgllahir || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Negara / Warga</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.warga || 'WNI'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Anak Ke / Jml Saudara</span>
+                      <span className="font-medium text-slate-800">Anak ke-{selectedDetail.anakke || 1} dari {selectedDetail.jsaudara || '-'} bersaudara</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Tinggi / Berat</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.tinggi || '-'} cm / {selectedDetail.berat || '-'} kg</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">HP Siswa</span>
+                      <span className="font-medium text-slate-800 font-mono">{selectedDetail.hpsiswa || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Asal Sekolah</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.asalsekolah || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* section: Alamat & Sekolah */}
+                <div className="space-y-4">
+                  <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2 font-semibold">Alamat & Sistem</h4>
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <span className="text-slate-500 block mb-1">Alamat Lengkap</span>
+                      <span className="font-medium text-slate-850 block">{selectedDetail.alamatsiswa || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Kode Pos</span>
+                      <span className="font-medium text-slate-800 font-mono">{selectedDetail.kodepossiswa || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Tahun Masuk</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.tahunmasuk || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Pin Registrasi Siswa</span>
+                      <span className="font-semibold text-blue-600 font-mono">{selectedDetail.pinsiswa || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* section: Wali & Orang Tua */}
+              <div className="border-t border-slate-100 pt-6">
+                <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4">Informasi Orang Tua</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Nama Ayah</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.namaayah || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Pendidikan Ayah</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.pendidikanayah || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Pekerjaan Ayah</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.pekerjaanayah || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Estimasi Penghasilan</span>
+                      <span className="font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">Rp {selectedDetail.penghasilanayah?.toLocaleString('id-ID') || '0'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Nama Ibu</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.namaibu || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Pendidikan Ibu</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.pendidikanibu || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">Pekerjaan Ibu</span>
+                      <span className="font-medium text-slate-800">{selectedDetail.pekerjaanibu || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-dashed border-slate-100">
+                      <span className="text-slate-500">HP Orang Tua</span>
+                      <span className="font-semibold text-slate-800 font-mono">{selectedDetail.hportu || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1461,118 +1358,6 @@ const KurikulumPage = ({ apiBaseUrl }: { apiBaseUrl: string }) => {
             )}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-};
-
-const PrestasiPage = ({ apiBaseUrl }: { apiBaseUrl: string }) => {
-  const [prestasi, setPrestasi] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<'semua' | 'akademik' | 'non-akademik'>('semua');
-
-  useEffect(() => {
-    fetchPrestasi();
-  }, [apiBaseUrl]);
-
-  const fetchPrestasi = async () => {
-    setIsLoading(true);
-    try {
-      const response = await apiCall(apiBaseUrl, '/api/ijasah/prestasi');
-      const result = await response.json();
-      if (result.status === 'sukses' && Array.isArray(result.data)) {
-        setPrestasi(result.data);
-      }
-    } catch (error) {
-      console.error('Error fetching prestasi:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredPrestasi = prestasi.filter((item) => {
-    const jenis = String(item.jenis_prestasi || 'Akademik').toLowerCase();
-    if (filter === 'semua') return true;
-    if (filter === 'akademik') return !jenis.includes('non');
-    return jenis.includes('non');
-  });
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 italic serif">Prestasi</h2>
-          <p className="text-slate-500 text-sm mt-1">Kelola daftar prestasi akademik dan non-akademik siswa.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { id: 'semua', label: 'Semua Prestasi' },
-            { id: 'akademik', label: 'Akademik' },
-            { id: 'non-akademik', label: 'Non-Akademik' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id as typeof filter)}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition-all border ${filter === tab.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-3xl bg-blue-100 flex items-center justify-center">
-              <Award className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-700">Jumlah Prestasi</div>
-              <div className="text-2xl font-bold text-slate-900">{prestasi.length}</div>
-            </div>
-          </div>
-          <div className="text-sm text-slate-500">Filter: {filter === 'semua' ? 'Semua' : filter === 'akademik' ? 'Akademik' : 'Non-Akademik'}</div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Prestasi</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Jenis</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Tingkat</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Tahun</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Siswa</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Keterangan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                [...Array(5)].map((_, idx) => (
-                  <tr key={idx} className="animate-pulse">
-                    <td colSpan={6} className="px-6 py-5"><div className="h-4 bg-slate-100 rounded w-full"></div></td>
-                  </tr>
-                ))
-              ) : filteredPrestasi.length > 0 ? (
-                filteredPrestasi.map((item, idx) => (
-                  <tr key={item.id || idx} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-semibold text-slate-800">{item.nama_prestasi || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.jenis_prestasi || 'Akademik'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.tingkat || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.tahun || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.siswa_id || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.keterangan || '-'}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">Tidak ada data prestasi untuk kategori ini.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );
@@ -2235,7 +2020,7 @@ export default function App() {
           onClick={() => setShowSettings(true)}
           className="fixed top-6 right-6 z-[60] p-2 bg-white rounded-xl shadow-lg border border-slate-200 text-slate-500 hover:text-blue-600 transition-all hover:scale-110 active:scale-95"
         >
-          <Settings className="w-6 h-6" stroke="#64748b" />
+          <Settings className="w-6 h-6" />
         </button>
 
         <LoginView apiBaseUrl={apiBaseUrl} onLoginSuccess={handleLoginSuccess} />
@@ -2252,14 +2037,6 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans selection:bg-blue-100 selection:text-blue-900 relative">
-      {/* Settings Toggle (Available even when logged in) */}
-      <button 
-        onClick={() => setShowSettings(true)}
-        className="fixed top-6 right-6 z-[60] p-2 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 text-slate-500 hover:text-blue-600 transition-all hover:scale-110 active:scale-95 group"
-      >
-        <Settings className="w-6 h-6 group-hover:rotate-45 duration-300" stroke="#64748b" />
-      </button>
-
       <ApiSettingsModal 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)} 
@@ -2289,12 +2066,11 @@ export default function App() {
               {activePage === 'siswa' && <SiswaPage apiBaseUrl={apiBaseUrl} user={user} />}
               {activePage === 'kurikulum' && <KurikulumPage apiBaseUrl={apiBaseUrl} />}
               {activePage === 'nilai' && <NilaiPage apiBaseUrl={apiBaseUrl} user={user} />}
-              {activePage === 'prestasi' && <PrestasiPage apiBaseUrl={apiBaseUrl} />}
               {activePage === 'kelulusan' && <KelulusanPage apiBaseUrl={apiBaseUrl} />}
               {activePage === 'dokumen' && <DokumenPage apiBaseUrl={apiBaseUrl} />}
               {activePage === 'settings' && <SettingsPage apiBaseUrl={apiBaseUrl} />}
               {/* Fallback for other pages */}
-              {!['dashboard', 'sekolah', 'siswa', 'kurikulum', 'nilai', 'prestasi', 'kelulusan', 'dokumen', 'settings'].includes(activePage) && (
+              {!['dashboard', 'sekolah', 'siswa', 'kurikulum', 'nilai', 'kelulusan', 'dokumen', 'settings'].includes(activePage) && (
                 <div className="h-[70vh] flex items-center justify-center text-slate-400 flex-col italic serif">
                    <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
                    Halaman "{activePage}" belum tersedia dalam prototipe ini.

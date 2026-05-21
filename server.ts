@@ -307,10 +307,6 @@ async function startServer() {
   });
 
   // 8. Prestasi Siswa
-  app.get("/api/ijasah/prestasi", (req, res) => {
-    res.json({ status: 'sukses', data: prestasiSiswa });
-  });
-
   app.get("/api/ijasah/prestasi/:siswa_id", (req, res) => {
     const { siswa_id } = req.params;
     const filtered = prestasiSiswa.filter(p => p.siswa_id === siswa_id);
@@ -569,83 +565,175 @@ async function startServer() {
           nis: "1603",
           nisn: "3130811571",
           nama: "AFIFAH NURUL KEISYA",
-          pinsiswa: "55756",
-          hportu: "081316321078",
+          tmplahir: "Jakarta, 11 September 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Afifah"
         },
         {
           nis: "1604",
           nisn: "3131011572",
           nama: "AHMAD ZAKI YUSWAN",
-          pinsiswa: "99702",
-          hportu: "08995650496",
+          tmplahir: "Bandung, 15 Oktober 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ahmad"
         },
         {
           nis: "1605",
           nisn: "3131211573",
           nama: "ALVIRA RIZQIAH NURHASANAH",
-          pinsiswa: "20333",
-          hportu: "087781320699",
+          tmplahir: "Surabaya, 22 November 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alvira"
         },
         {
           nis: "1606",
           nisn: "3131411574",
           nama: "ALYA NABILA",
-          pinsiswa: "72553",
-          hportu: "082338081669",
+          tmplahir: "Semarang, 5 Januari 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alya"
         },
         {
           nis: "1607",
           nisn: "3131611575",
           nama: "ANGLING DHARMA",
-          pinsiswa: "40867",
-          hportu: "089501010101",
+          tmplahir: "Yogyakarta, 12 Februari 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Angling"
         },
         {
           nis: "1608",
           nisn: "3131811576",
           nama: "ARJUNA RASYID PUTRA",
-          pinsiswa: "31334",
-          hportu: "081291971662",
+          tmplahir: "Medan, 30 Maret 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Arjuna"
         },
         {
           nis: "1609",
           nisn: "3132011577",
           nama: "AZZEYAAN SHAFIA SETIO",
-          pinsiswa: "66726",
-          hportu: "085726279026",
+          tmplahir: "Palembang, 18 April 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Azzeyaan"
         },
         {
           nis: "1610",
           nisn: "3132211578",
           nama: "BAGAS PUTRA PRAMUDYA",
-          pinsiswa: "69564",
-          hportu: "085771665366",
+          tmplahir: "Makassar, 9 Mei 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Bagas"
         },
         {
           nis: "1611",
           nisn: "3132411579",
           nama: "DHINO MULYA PRAKOSO",
-          pinsiswa: "93493",
-          hportu: "081280479120",
+          tmplahir: "Malang, 25 Juni 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Dhino"
         },
         {
           nis: "1612",
           nisn: "3132611580",
           nama: "ELYSIA VANIA REMU",
-          pinsiswa: "20485",
-          hportu: "085776559108",
+          tmplahir: "Solo, 14 Juli 2013",
           foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=Elysia"
         }
       ]
+    });
+  });
+
+  app.get("/api/jbsakad/siswa/detail/:nis", (req, res) => {
+    const { nis } = req.params;
+    const names: Record<string, { nama: string, tmplahir: string, tgllahir: string, kelamin: string, pinsiswa: string, hportu: string, panggilan: string }> = {
+      "1603": { nama: "AFIFAH NURUL KEISYA", tmplahir: "Jakarta", tgllahir: "11-09-2013", kelamin: "p", pinsiswa: "55756", hportu: "081316321078", panggilan: "Keysa" },
+      "1604": { nama: "AHMAD ZAKI YUSWAN", tmplahir: "Bandung", tgllahir: "15-10-2013", kelamin: "l", pinsiswa: "99702", hportu: "08995650496", panggilan: "Zaki" },
+      "1605": { nama: "ALVIRA RIZQIAH NURHASANAH", tmplahir: "Surabaya", tgllahir: "22-11-2013", kelamin: "p", pinsiswa: "20333", hportu: "087781320699", panggilan: "Alvira" },
+      "1606": { nama: "ALYA NABILA", tmplahir: "Semarang", tgllahir: "05-01-2013", kelamin: "p", pinsiswa: "72553", hportu: "082338081669", panggilan: "Alya" },
+      "1607": { nama: "ANGLING DHARMA", tmplahir: "Yogyakarta", tgllahir: "12-02-2013", kelamin: "l", pinsiswa: "40867", hportu: "089501010101", panggilan: "Angling" },
+      "1608": { nama: "ARJUNA RASYID PUTRA", tmplahir: "Medan", tgllahir: "30-03-2013", kelamin: "l", pinsiswa: "31334", hportu: "081291971662", panggilan: "Arjuna" },
+      "1609": { nama: "AZZEYAAN SHAFIA SETIO", tmplahir: "Palembang", tgllahir: "18-04-2013", kelamin: "p", pinsiswa: "66726", hportu: "085726279026", panggilan: "Azzeyaan" },
+      "1610": { nama: "BAGAS PUTRA PRAMUDYA", tmplahir: "Makassar", tgllahir: "09-05-2013", kelamin: "l", pinsiswa: "69564", hportu: "085771665366", panggilan: "Bagas" },
+      "1611": { nama: "DHINO MULYA PRAKOSO", tmplahir: "Malang", tgllahir: "25-06-2013", kelamin: "l", pinsiswa: "93493", hportu: "081280479120", panggilan: "Dhino" },
+      "1612": { nama: "ELYSIA VANIA REMU", tmplahir: "Solo", tgllahir: "14-07-2013", kelamin: "p", pinsiswa: "20485", hportu: "085776559108", panggilan: "Elysia" },
+    };
+
+    const details = names[nis] || { nama: "Siswa Mock", tmplahir: "Jakarta", tgllahir: "01-01-2013", kelamin: "l", pinsiswa: "12345", hportu: "0812000000", panggilan: "Mock" };
+
+    const studentData = {
+      replid: 40 + parseInt(nis) % 100,
+      nis: nis,
+      nisn: "31308" + nis,
+      nik: "31740151" + nis + "0008",
+      noun: "",
+      nama: details.nama,
+      panggilan: details.panggilan,
+      aktif: 1,
+      tahunmasuk: 2025,
+      idangkatan: 26,
+      idkelas: 190,
+      suku: "Jawa",
+      agama: "Islam",
+      status: "Reguler",
+      kondisi: "Berkecukupan",
+      kelamin: details.kelamin,
+      tmplahir: details.tmplahir,
+      tgllahir: details.tgllahir,
+      warga: "WNI",
+      anakke: 1,
+      jsaudara: 2,
+      statusanak: "Kandung",
+      jkandung: 2,
+      jtiri: 0,
+      bahasa: "Indonesia",
+      berat: "15.0",
+      tinggi: "110.0",
+      darah: "",
+      foto: "https://api.dicebear.com/7.x/avataaars/svg?seed=" + details.panggilan,
+      alamatsiswa: "Jl. Sepakat I RT 01/01 Cilangkap Cipayung",
+      jarak: 1,
+      kodepossiswa: "13870",
+      telponsiswa: "",
+      hpsiswa: "08129859" + nis,
+      emailsiswa: "",
+      kesehatan: "",
+      asalsekolah: "BIMBA AIUEO",
+      noijasah: "",
+      tglijasah: "",
+      ketsekolah: "",
+      namaayah: "Rostam Efendi",
+      namaibu: "Gusmita Sari",
+      statusayah: "Kandung",
+      statusibu: "Kandung",
+      tmplahirayah: "Sel Sari",
+      tmplahiribu: "Sumbar",
+      tgllahirayah: "1900-9-1",
+      tgllahiribu: "1900-8-1",
+      almayah: 0,
+      almibu: 0,
+      pendidikanayah: "SMA",
+      pendidikanibu: "SMA",
+      pekerjaanayah: "Wiraswasta",
+      pekerjaanibu: "Wiraswasta",
+      wali: "",
+      penghasilanayah: 3000000,
+      penghasilanibu: 0,
+      alamatortu: "Jl. Sepakat I RT 01/01 Cilangkap Cipayung",
+      telponortu: "",
+      hportu: details.hportu,
+      emailayah: "",
+      alamatsurat: "Jl. Sepakat I RT 01/01 Cilangkap Cipayung",
+      keterangan: "",
+      hobi: "",
+      frompsb: 0,
+      ketpsb: null,
+      statusmutasi: null,
+      alumni: 0,
+      pinsiswa: details.pinsiswa,
+      pinortu: "35476",
+      pinortuibu: "28382",
+      emailibu: "",
+      info1: "",
+      info2: "081775415317",
+      info3: null
+    };
+
+    res.json({
+      status: "sukses",
+      source: "mysql",
+      data: studentData
     });
   });
 
